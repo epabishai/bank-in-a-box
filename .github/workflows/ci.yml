@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Verify backend
+        run: mvn -B verify
+      - name: Upload backend test reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: backend-test-reports
+          path: |
+            target/surefire-reports/
+            target/failsafe-reports/
+          if-no-files-found: warn
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        if: ${{ hashFiles('frontend/package.json') != '' }}
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Verify frontend
+        if: ${{ hashFiles('frontend/package.json') != '' }}
+        working-directory: frontend
+        run: |
+          npm ci
+          npm test -- --reporter=default --reporter=junit --outputFile.junit=test-results.xml
+          npm run build
+      - name: Upload frontend test report
+        if: ${{ !cancelled() && hashFiles('frontend/package.json') != '' }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: frontend-test-report
+          path: frontend/test-results.xml
+          if-no-files-found: warn
+
+  ci:
+    name: ci
+    if: ${{ always() }}
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Require both jobs to succeed
+        env:
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+        run: test "$BACKEND_RESULT" = success && test "$FRONTEND_RESULT" = success
