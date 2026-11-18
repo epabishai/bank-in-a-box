@@ -9,7 +9,7 @@ This repo ships the **team and the plan**, not the app. The app appears as agent
 | Area | Where you see it |
 |---|---|
 | **Core** — issues, dependencies, labels, PRs, rulesets, required checks | 25 spec-driven issues with `Blocked by` links; branch ruleset requiring the `ci` check |
-| **Workflows** — Actions and Agentic Workflows | `.github/workflows/orchestrator.md`, `standup.md` (agentic); CI, CodeQL, release (built by agents) |
+| **Workflows** — Actions and Agentic Workflows | `.github/workflows/ci.yml` (CI), `orchestrator.md` and `standup.md` (agentic); CodeQL and release (built by agents) |
 | **Copilot** — cloud agent, custom agents, instructions | `.github/agents/*.agent.md`, `.github/copilot-instructions.md`, issues assigned to Copilot |
 | **GitHub Advanced Security** | CodeQL, dependency review, Dependabot, secret scanning push protection (issue 21) |
 | **Supply chain** | GHCR image, SBOM, build provenance attestation (issue 24) |
@@ -73,6 +73,10 @@ gh aw run orchestrator
 ```
 
 Then watch: issue 1 (ADRs) is the only unblocked issue, so it goes first. After you merge it, issues 2, 3 and 12 unblock and the orchestrator starts two at a time.
+
+### CI
+
+The required `ci` check runs on pull requests and pushes to `main`. It requires the Java 21 Maven verification and, when `frontend/package.json` exists, the Node.js 24 frontend install, Vitest tests, and build. Download any generated test reports from the workflow run’s **Artifacts** section, including reports from failing tests.
 
 ## Reset for the next demo
 
