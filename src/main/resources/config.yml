@@ -1,0 +1,16 @@
+server:
+  applicationConnectors:
+    - type: http
+      port: ${PORT:-8080}
+  adminConnectors:
+    - type: http
+      port: ${ADMIN_PORT:-8081}
+  rootPath: /api/*
+
+database:
+  driverClass: org.postgresql.Driver
+  user: ${DB_USER:-bank}
+  password: ${DB_PASSWORD:-bank}
+  url: ${DB_URL:-jdbc:postgresql://localhost:5432/bank}
+
+environment: ${ENV:-development}
