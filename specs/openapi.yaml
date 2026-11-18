@@ -1,0 +1,509 @@
+openapi: 3.1.0
+info:
+  title: Bank in a Box API
+  version: 1.0.0
+  description: API contract derived from specs/SPEC.md sections 5 and 6.
+servers:
+  - url: /
+    description: Same-origin application
+paths:
+  /api/accounts:
+    post:
+      operationId: createAccount
+      summary: Create an account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAccountRequest"
+            example:
+              name: Ada Lovelace
+              email: ada@example.com
+              initial_deposit: 125.5
+      responses:
+        "201":
+          description: Account created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+              example:
+                id: 8a0f4e3a-6fd5-4e8e-a53a-2d522bb0d17a
+                name: Ada Lovelace
+                email: ada@example.com
+                balance: 125.5
+                createdAt: "2026-11-18T16:19:09Z"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/EmailAlreadyExists"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/accounts/{id}:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      operationId: getAccount
+      summary: Get an account and its balance
+      responses:
+        "200":
+          description: Account found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+              example:
+                id: 8a0f4e3a-6fd5-4e8e-a53a-2d522bb0d17a
+                name: Ada Lovelace
+                email: ada@example.com
+                balance: 125.5
+                createdAt: "2026-11-18T16:19:09Z"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/AccountNotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/accounts/{id}/transactions:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      operationId: listAccountTransactions
+      summary: List an account's transaction history
+      description: Returns transactions newest first.
+      parameters:
+        - name: page
+          in: query
+          required: false
+          description: Page number (default 1).
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          example: 1
+        - name: limit
+          in: query
+          required: false
+          description: Number of transactions per page (default 20).
+          schema:
+            type: integer
+            minimum: 1
+            default: 20
+          example: 20
+      responses:
+        "200":
+          description: Paginated transaction history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionPage"
+              example:
+                items:
+                  - id: 6d5f17da-00ca-49a3-b7d7-21b9f1fb74eb
+                    accountId: 8a0f4e3a-6fd5-4e8e-a53a-2d522bb0d17a
+                    type: DEPOSIT
+                    amount: 125.5
+                    note: Opening deposit
+                    createdAt: "2026-11-18T16:19:09Z"
+                page: 1
+                limit: 20
+                total: 1
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/AccountNotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/accounts/{id}/deposit:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    post:
+      operationId: deposit
+      summary: Deposit money into an account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransactionRequest"
+            example:
+              amount: 25
+              note: Paycheck
+      responses:
+        "201":
+          description: Deposit recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+              example:
+                id: 6d5f17da-00ca-49a3-b7d7-21b9f1fb74eb
+                accountId: 8a0f4e3a-6fd5-4e8e-a53a-2d522bb0d17a
+                type: DEPOSIT
+                amount: 25
+                note: Paycheck
+                createdAt: "2026-11-18T16:19:09Z"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/AccountNotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/accounts/{id}/withdraw:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    post:
+      operationId: withdraw
+      summary: Withdraw money from an account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransactionRequest"
+            example:
+              amount: 10
+              note: Cash withdrawal
+      responses:
+        "201":
+          description: Withdrawal recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+              example:
+                id: 90720c64-94cf-4363-9c84-c3da16c34644
+                accountId: 8a0f4e3a-6fd5-4e8e-a53a-2d522bb0d17a
+                type: WITHDRAWAL
+                amount: 10
+                note: Cash withdrawal
+                createdAt: "2026-11-18T16:19:09Z"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/AccountNotFound"
+        "422":
+          $ref: "#/components/responses/InsufficientFunds"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/accounts/{id}/transfer:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    post:
+      operationId: transfer
+      summary: Transfer money to another account
+      description: Stretch endpoint specified in specs/SPEC.md section 5.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransferRequest"
+            example:
+              to_account_id: 2b360f2d-c2a8-4fb9-9699-d7f84663ebc6
+              amount: 15
+              note: Shared expenses
+      responses:
+        "201":
+          description: Transfer recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferResponse"
+              example:
+                transactions:
+                  - id: 90720c64-94cf-4363-9c84-c3da16c34644
+                    accountId: 8a0f4e3a-6fd5-4e8e-a53a-2d522bb0d17a
+                    type: TRANSFER_OUT
+                    amount: 15
+                    note: Shared expenses
+                    createdAt: "2026-11-18T16:19:09Z"
+                  - id: 4d65333f-d1c8-41f0-bdd5-4d675fb0b4d7
+                    accountId: 2b360f2d-c2a8-4fb9-9699-d7f84663ebc6
+                    type: TRANSFER_IN
+                    amount: 15
+                    note: Shared expenses
+                    createdAt: "2026-11-18T16:19:09Z"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/AccountNotFound"
+        "422":
+          $ref: "#/components/responses/InsufficientFunds"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/health:
+    get:
+      operationId: getHealth
+      summary: Check application and database health
+      responses:
+        "200":
+          description: Application and database health.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: UP
+                checks:
+                  app: UP
+                  database: UP
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  parameters:
+    AccountId:
+      name: id
+      in: path
+      required: true
+      description: Account UUID.
+      schema:
+        type: string
+        format: uuid
+      example: 8a0f4e3a-6fd5-4e8e-a53a-2d522bb0d17a
+
+  schemas:
+    CreateAccountRequest:
+      type: object
+      required:
+        - name
+        - email
+      properties:
+        name:
+          type: string
+          example: Ada Lovelace
+        email:
+          type: string
+          format: email
+          description: Account email; uniqueness is case-insensitive.
+          example: ada@example.com
+        initial_deposit:
+          type: number
+          multipleOf: 0.01
+          minimum: 0
+          description: Optional opening amount. Values greater than zero are recorded as an initial deposit.
+          example: 125.5
+
+    Account:
+      type: object
+      required:
+        - id
+        - name
+        - email
+        - balance
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        balance:
+          $ref: "#/components/schemas/Money"
+        createdAt:
+          type: string
+          format: date-time
+
+    TransactionRequest:
+      type: object
+      required:
+        - amount
+      properties:
+        amount:
+          $ref: "#/components/schemas/PositiveMoney"
+        note:
+          type: string
+
+    TransferRequest:
+      type: object
+      required:
+        - to_account_id
+        - amount
+      properties:
+        to_account_id:
+          type: string
+          format: uuid
+        amount:
+          $ref: "#/components/schemas/PositiveMoney"
+        note:
+          type: string
+
+    Transaction:
+      type: object
+      required:
+        - id
+        - accountId
+        - type
+        - amount
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        accountId:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum:
+            - DEPOSIT
+            - WITHDRAWAL
+            - TRANSFER_IN
+            - TRANSFER_OUT
+        amount:
+          $ref: "#/components/schemas/PositiveMoney"
+        note:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    TransactionPage:
+      type: object
+      required:
+        - items
+        - page
+        - limit
+        - total
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Transaction"
+        page:
+          type: integer
+          minimum: 1
+        limit:
+          type: integer
+          minimum: 1
+        total:
+          type: integer
+          minimum: 0
+
+    TransferResponse:
+      type: object
+      required:
+        - transactions
+      properties:
+        transactions:
+          type: array
+          description: The source TRANSFER_OUT and destination TRANSFER_IN entries.
+          minItems: 2
+          maxItems: 2
+          items:
+            $ref: "#/components/schemas/Transaction"
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - checks
+      properties:
+        status:
+          type: string
+          example: UP
+        checks:
+          type: object
+          required:
+            - app
+            - database
+          properties:
+            app:
+              type: string
+              example: UP
+            database:
+              type: string
+              example: UP
+
+    Money:
+      type: number
+      multipleOf: 0.01
+      minimum: 0
+      description: JSON decimal amount with at most two fractional digits.
+      example: 125.5
+
+    PositiveMoney:
+      type: number
+      exclusiveMinimum: 0
+      multipleOf: 0.01
+      description: Positive JSON decimal amount with at most two fractional digits.
+      example: 25
+
+    ApiError:
+      type: object
+      required:
+        - error
+        - code
+      properties:
+        error:
+          type: string
+          description: Human-readable error message.
+        code:
+          type: string
+          enum:
+            - VALIDATION_ERROR
+            - ACCOUNT_NOT_FOUND
+            - EMAIL_ALREADY_EXISTS
+            - INSUFFICIENT_FUNDS
+            - INTERNAL_ERROR
+      example:
+        error: Request validation failed.
+        code: VALIDATION_ERROR
+
+  responses:
+    ValidationError:
+      description: Bad or missing field, non-positive transaction amount, or amount with more than two decimal places.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            error: Amount must be greater than zero and have at most two decimal places.
+            code: VALIDATION_ERROR
+    AccountNotFound:
+      description: The requested account does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            error: Account not found.
+            code: ACCOUNT_NOT_FOUND
+    EmailAlreadyExists:
+      description: An account already exists with this email address.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            error: An account with this email already exists.
+            code: EMAIL_ALREADY_EXISTS
+    InsufficientFunds:
+      description: The account balance is less than the requested withdrawal.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            error: Insufficient funds.
+            code: INSUFFICIENT_FUNDS
+    InternalError:
+      description: An unhandled server error. The response body does not contain a stack trace.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            error: An internal error occurred.
+            code: INTERNAL_ERROR
