@@ -80,8 +80,8 @@ class BankApplicationTest {
         try (Connection connection = openConnection();
              Statement statement = connection.createStatement()) {
             statement.executeUpdate(
-                    "INSERT INTO accounts (id, name, email) VALUES ('" + accountId
-                            + "', 'Test account', 'test@example.com')");
+                    "INSERT INTO accounts (id, name, email, balance_cents) VALUES ('" + accountId
+                            + "', 'Test account', 'test@example.com', 0)");
             assertThrows(SQLException.class, () -> statement.executeUpdate(
                     "INSERT INTO accounts (id, name, email) VALUES ('" + UUID.randomUUID()
                             + "', 'Duplicate', 'TEST@example.com')"));
@@ -91,6 +91,9 @@ class BankApplicationTest {
             assertThrows(SQLException.class, () -> statement.executeUpdate(
                     "INSERT INTO transactions (id, account_id, type, amount_cents) VALUES ('"
                             + UUID.randomUUID() + "', '" + accountId + "', 'DEPOSIT', 0)"));
+            assertThrows(SQLException.class, () -> statement.executeUpdate(
+                    "INSERT INTO transactions (id, account_id, type, amount_cents) VALUES ('"
+                            + UUID.randomUUID() + "', '" + UUID.randomUUID() + "', 'DEPOSIT', 1)"));
         }
     }
 
