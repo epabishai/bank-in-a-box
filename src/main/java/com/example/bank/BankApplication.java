@@ -5,6 +5,7 @@ import io.dropwizard.configuration.EnvironmentVariableSubstitutor;
 import io.dropwizard.configuration.SubstitutingSourceProvider;
 import io.dropwizard.core.setup.Bootstrap;
 import io.dropwizard.core.setup.Environment;
+import org.flywaydb.core.Flyway;
 
 public class BankApplication extends Application<BankConfiguration> {
     public static void main(String[] args) throws Exception {
@@ -26,6 +27,14 @@ public class BankApplication extends Application<BankConfiguration> {
 
     @Override
     public void run(BankConfiguration configuration, Environment environment) {
+        Flyway.configure()
+                .dataSource(
+                        configuration.getDatabase().getUrl(),
+                        configuration.getDatabase().getUser(),
+                        configuration.getDatabase().getPassword()
+                )
+                .load()
+                .migrate();
         environment.jersey().register(new HealthResource());
     }
 }
