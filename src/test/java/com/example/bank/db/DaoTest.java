@@ -1,9 +1,12 @@
 package com.example.bank.db;
 
+import com.example.bank.api.CreateAccountRequest;
 import com.example.bank.core.Account;
 import com.example.bank.core.Money;
 import com.example.bank.core.Transaction;
 import com.example.bank.core.TransactionType;
+import com.example.bank.errors.EmailAlreadyExistsException;
+import com.example.bank.service.AccountService;
 import org.flywaydb.core.Flyway;
 import org.jdbi.v3.core.Jdbi;
 import org.jdbi.v3.core.statement.UnableToExecuteStatementException;
@@ -14,6 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.PostgreSQLContainer;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -21,6 +25,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -122,6 +127,58 @@ class DaoTest {
         }));
         assertEquals(new Money(0), jdbi.onDemand(AccountDao.class).findById(id).orElseThrow().balance());
         assertEquals(0, jdbi.onDemand(TransactionDao.class).countByAccount(id));
+    }
+
+    @Test
+    void accountServiceCreatesInitialDepositAndLedgerAtomically() {
+        AccountService service = new AccountService(jdbi);
+        Account account = service.create(
+                new CreateAccountRequest("Ada Lovelace", "ada@example.com", new BigDecimal("125.50")));
+        List<Transaction> history = jdbi.onDemand(TransactionDao.class).listByAccount(account.id(), 10, 0);
+
+        assertEquals(new Money(12_550), account.balance());
+        assertEquals(1, history.size());
+        assertEquals(TransactionType.DEPOSIT, history.getFirst().type());
+        assertEquals(new Money(12_550), history.getFirst().amount());
+
+        Account zeroDeposit = service.create(
+                new CreateAccountRequest("Grace Hopper", "grace@example.com", BigDecimal.ZERO));
+        assertEquals(new Money(0), zeroDeposit.balance());
+        assertEquals(0, jdbi.onDemand(TransactionDao.class).countByAccount(zeroDeposit.id()));
+    }
+
+    @Test
+    void concurrentAccountCreatesMapCaseInsensitiveEmailConflict() throws Exception {
+        AccountService service = new AccountService(jdbi);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        AtomicInteger nextEmail = new AtomicInteger();
+        List<String> emails = List.of("RACE@example.com", "race@example.com");
+        try {
+            java.util.concurrent.Callable<Boolean> create = () -> {
+                ready.countDown();
+                if (!start.await(10, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("Start timed out");
+                }
+                try {
+                    service.create(new CreateAccountRequest("Race", emails.get(nextEmail.getAndIncrement()), null));
+                    return true;
+                } catch (EmailAlreadyExistsException exception) {
+                    return false;
+                }
+            };
+            Future<Boolean> first = executor.submit(create);
+            Future<Boolean> second = executor.submit(create);
+            assertTrue(ready.await(10, TimeUnit.SECONDS));
+            start.countDown();
+            assertEquals(1, (first.get(20, TimeUnit.SECONDS) ? 1 : 0)
+                    + (second.get(20, TimeUnit.SECONDS) ? 1 : 0));
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+        }
     }
 
     @Test

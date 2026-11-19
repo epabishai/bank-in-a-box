@@ -1,5 +1,7 @@
 package com.example.bank;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dropwizard.testing.ConfigOverride;
 import io.dropwizard.testing.ResourceHelpers;
 import io.dropwizard.testing.junit5.DropwizardAppExtension;
@@ -9,6 +11,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -18,6 +21,7 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Locale;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -61,6 +65,44 @@ class BankApplicationTest {
         assertTrue(apiHealth.body().contains("\"status\":\"ok\""));
         assertEquals(404, root.statusCode());
         assertEquals(200, adminHealth.statusCode());
+    }
+
+    @Test
+    void createsAndGetsAccountAndReturnsExpectedErrors() throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+        ObjectMapper mapper = new ObjectMapper();
+        String email = "account-" + UUID.randomUUID() + "@example.com";
+        HttpResponse<String> created = post(client, APP.getLocalPort(), "/api/accounts",
+                "{\"name\":\"Ada Lovelace\",\"email\":\"" + email + "\",\"initial_deposit\":125.50}");
+
+        assertEquals(201, created.statusCode());
+        JsonNode account = mapper.readTree(created.body());
+        UUID accountId = UUID.fromString(account.get("id").asText());
+        assertEquals("Ada Lovelace", account.get("name").asText());
+        assertEquals(email, account.get("email").asText());
+        assertEquals(0, account.get("balance").decimalValue().compareTo(new BigDecimal("125.50")));
+
+        HttpResponse<String> fetched = get(client, APP.getLocalPort(), "/api/accounts/" + accountId);
+        assertEquals(200, fetched.statusCode());
+        assertEquals(accountId.toString(), mapper.readTree(fetched.body()).get("id").asText());
+
+        HttpResponse<String> missing = get(client, APP.getLocalPort(), "/api/accounts/" + UUID.randomUUID());
+        assertEquals(404, missing.statusCode());
+        assertEquals("ACCOUNT_NOT_FOUND", mapper.readTree(missing.body()).get("code").asText());
+
+        HttpResponse<String> malformed = get(client, APP.getLocalPort(), "/api/accounts/not-a-uuid");
+        assertEquals(400, malformed.statusCode());
+        assertEquals("VALIDATION_ERROR", mapper.readTree(malformed.body()).get("code").asText());
+
+        HttpResponse<String> duplicate = post(client, APP.getLocalPort(), "/api/accounts",
+                "{\"name\":\"Duplicate\",\"email\":\"" + email.toUpperCase(Locale.ROOT) + "\"}");
+        assertEquals(409, duplicate.statusCode());
+        assertEquals("EMAIL_ALREADY_EXISTS", mapper.readTree(duplicate.body()).get("code").asText());
+
+        HttpResponse<String> invalid = post(client, APP.getLocalPort(), "/api/accounts",
+                "{\"name\":\"\",\"email\":\"not-an-email\",\"initial_deposit\":1}");
+        assertEquals(400, invalid.statusCode());
+        assertEquals("VALIDATION_ERROR", mapper.readTree(invalid.body()).get("code").asText());
     }
 
     @Test
@@ -120,6 +162,15 @@ class BankApplicationTest {
     private static HttpResponse<String> get(HttpClient client, int port, String path)
             throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path)).GET().build();
+        return client.send(request, HttpResponse.BodyHandlers.ofString());
+    }
+
+    private static HttpResponse<String> post(HttpClient client, int port, String path, String body)
+            throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
         return client.send(request, HttpResponse.BodyHandlers.ofString());
     }
 }
