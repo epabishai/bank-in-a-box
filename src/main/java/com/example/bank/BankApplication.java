@@ -7,7 +7,12 @@ import io.dropwizard.core.setup.Bootstrap;
 import io.dropwizard.core.setup.Environment;
 import io.dropwizard.core.server.AbstractServerFactory;
 import com.example.bank.errors.ErrorHandling;
+import com.example.bank.resources.AccountResource;
+import com.example.bank.service.AccountService;
 import org.flywaydb.core.Flyway;
+import org.jdbi.v3.core.Jdbi;
+import org.jdbi.v3.sqlobject.SqlObjectPlugin;
+import io.dropwizard.jdbi3.JdbiFactory;
 
 public class BankApplication extends Application<BankConfiguration> {
     public static void main(String[] args) throws Exception {
@@ -42,6 +47,9 @@ public class BankApplication extends Application<BankConfiguration> {
                 )
                 .load()
                 .migrate();
+        Jdbi jdbi = new JdbiFactory().build(environment, configuration.getDatabase(), "database");
+        jdbi.installPlugin(new SqlObjectPlugin());
         environment.jersey().register(new HealthResource());
+        environment.jersey().register(new AccountResource(new AccountService(jdbi)));
     }
 }
