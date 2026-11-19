@@ -5,6 +5,8 @@ import io.dropwizard.configuration.EnvironmentVariableSubstitutor;
 import io.dropwizard.configuration.SubstitutingSourceProvider;
 import io.dropwizard.core.setup.Bootstrap;
 import io.dropwizard.core.setup.Environment;
+import io.dropwizard.core.server.AbstractServerFactory;
+import com.example.bank.errors.ErrorHandling;
 import org.flywaydb.core.Flyway;
 
 public class BankApplication extends Application<BankConfiguration> {
@@ -27,6 +29,11 @@ public class BankApplication extends Application<BankConfiguration> {
 
     @Override
     public void run(BankConfiguration configuration, Environment environment) {
+        // Register our providers instead of Dropwizard's competing default mappers.
+        if (configuration.getServerFactory() instanceof AbstractServerFactory serverFactory) {
+            serverFactory.setRegisterDefaultExceptionMappers(false);
+        }
+        ErrorHandling.register(environment);
         Flyway.configure()
                 .dataSource(
                         configuration.getDatabase().getUrl(),

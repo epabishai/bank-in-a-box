@@ -78,6 +78,12 @@ Then watch: issue 1 (ADRs) is the only unblocked issue, so it goes first. After 
 
 The required `ci` check runs on pull requests and pushes to `main`. It requires the Java 21 Maven verification and, when `frontend/package.json` exists, the Node.js 24 frontend install, Vitest tests, and build. Download any generated test reports from the workflow run’s **Artifacts** section, including reports from failing tests.
 
+API errors use JSON objects with `error` and `code`. In addition to the domain
+codes in the spec, unmatched routes currently return `NOT_FOUND`, and other
+framework-generated client errors use `HTTP_ERROR` (with the original HTTP
+status). Server failures use `INTERNAL_ERROR` without exposing failure details.
+The non-API 404 handler is temporary until the SPA fallback in ADR-004 is implemented.
+
 ## Reset for the next demo
 
 ```bash
