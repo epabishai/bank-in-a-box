@@ -457,6 +457,9 @@ components:
             - EMAIL_ALREADY_EXISTS
             - INSUFFICIENT_FUNDS
             - INTERNAL_ERROR
+            - NOT_FOUND
+            - HTTP_ERROR
+          description: NOT_FOUND is used for unknown routes; HTTP_ERROR covers other framework HTTP failures.
       example:
         error: Request validation failed.
         code: VALIDATION_ERROR
