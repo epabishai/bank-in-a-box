@@ -3,11 +3,13 @@ package com.example.bank.service;
 import com.example.bank.api.CreateAccountRequest;
 import com.example.bank.core.Account;
 import com.example.bank.core.Money;
+import com.example.bank.core.Transaction;
 import com.example.bank.core.TransactionType;
 import com.example.bank.db.AccountDao;
 import com.example.bank.db.TransactionDao;
 import com.example.bank.errors.AccountNotFoundException;
 import com.example.bank.errors.EmailAlreadyExistsException;
+import com.example.bank.errors.InsufficientFundsException;
 import org.jdbi.v3.core.Jdbi;
 import org.postgresql.util.PSQLException;
 
@@ -46,6 +48,45 @@ public final class AccountService {
     public Account get(UUID id) {
         return jdbi.withHandle(handle -> handle.attach(AccountDao.class).findById(id)
                 .orElseThrow(AccountNotFoundException::new));
+    }
+
+    public Transaction deposit(UUID accountId, BigDecimal amount, String note) {
+        return transact(accountId, amount, note, TransactionType.DEPOSIT);
+    }
+
+    public Transaction withdraw(UUID accountId, BigDecimal amount, String note) {
+        return transact(accountId, amount, note, TransactionType.WITHDRAWAL);
+    }
+
+    private Transaction transact(UUID accountId, BigDecimal amount, String note, TransactionType type) {
+        long amountCents = transactionAmountCents(amount);
+        UUID transactionId = UUID.randomUUID();
+        return jdbi.inTransaction(handle -> {
+            AccountDao accounts = handle.attach(AccountDao.class);
+            int updated = type == TransactionType.DEPOSIT
+                    ? accounts.credit(accountId, amountCents)
+                    : accounts.debit(accountId, amountCents);
+            if (updated == 0) {
+                if (accounts.findById(accountId).isEmpty()) {
+                    throw new AccountNotFoundException();
+                }
+                throw new InsufficientFundsException();
+            }
+            TransactionDao transactions = handle.attach(TransactionDao.class);
+            transactions.insert(transactionId, accountId, type, amountCents, note);
+            return transactions.findById(transactionId).orElseThrow();
+        });
+    }
+
+    private static long transactionAmountCents(BigDecimal amount) {
+        if (amount == null) {
+            throw new IllegalArgumentException("Amount is required");
+        }
+        long cents = Money.fromBigDecimal(amount).cents();
+        if (cents <= 0) {
+            throw new IllegalArgumentException("Amount must be greater than zero");
+        }
+        return cents;
     }
 
     private static long initialDepositCents(BigDecimal initialDeposit) {

@@ -2,6 +2,8 @@ package com.example.bank.resources;
 
 import com.example.bank.api.AccountResponse;
 import com.example.bank.api.CreateAccountRequest;
+import com.example.bank.api.TransactionRequest;
+import com.example.bank.api.TransactionResponse;
 import com.example.bank.core.Account;
 import com.example.bank.service.AccountService;
 import jakarta.validation.Valid;
@@ -42,15 +44,43 @@ public final class AccountResource {
     @GET
     @Path("/{id}")
     public AccountResponse get(@PathParam("id") String id) {
-        UUID accountId;
+        return AccountResponse.from(accountService.get(parseAccountId(id)));
+    }
+
+    @POST
+    @Path("/{id}/deposit")
+    public Response deposit(@PathParam("id") String id, @Valid @NotNull TransactionRequest request) {
+        return transact(id, request, true);
+    }
+
+    @POST
+    @Path("/{id}/withdraw")
+    public Response withdraw(@PathParam("id") String id, @Valid @NotNull TransactionRequest request) {
+        return transact(id, request, false);
+    }
+
+    private Response transact(String id, TransactionRequest request, boolean deposit) {
         try {
-            accountId = UUID.fromString(id);
+            TransactionResponse transaction = deposit
+                    ? TransactionResponse.from(accountService.deposit(
+                            parseAccountId(id), request.amount(), request.note()))
+                    : TransactionResponse.from(accountService.withdraw(
+                            parseAccountId(id), request.amount(), request.note()));
+            return Response.status(Response.Status.CREATED).entity(transaction).build();
+        } catch (IllegalArgumentException | ArithmeticException exception) {
+            throw new BadRequestException("Invalid transaction amount", exception);
+        }
+    }
+
+    private static UUID parseAccountId(String id) {
+        try {
+            UUID accountId = UUID.fromString(id);
             if (!accountId.toString().equalsIgnoreCase(id)) {
                 throw new IllegalArgumentException("Invalid UUID");
             }
+            return accountId;
         } catch (IllegalArgumentException exception) {
             throw new BadRequestException("Account id must be a UUID", exception);
         }
-        return AccountResponse.from(accountService.get(accountId));
     }
 }

@@ -18,11 +18,19 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -106,6 +114,102 @@ class BankApplicationTest {
     }
 
     @Test
+    void depositsAndWithdrawalsValidateAmountsAndDoNotWriteOnFailure() throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+        ObjectMapper mapper = new ObjectMapper();
+        String email = "ledger-" + UUID.randomUUID() + "@example.com";
+        HttpResponse<String> created = post(client, APP.getLocalPort(), "/api/accounts",
+                "{\"name\":\"Ledger account\",\"email\":\"" + email + "\",\"initial_deposit\":10.00}");
+        UUID accountId = UUID.fromString(mapper.readTree(created.body()).get("id").asText());
+
+        HttpResponse<String> deposit = post(client, APP.getLocalPort(), "/api/accounts/" + accountId + "/deposit",
+                "{\"amount\":2.50,\"note\":\"Paycheck\"}");
+        assertEquals(201, deposit.statusCode());
+        JsonNode depositResponse = mapper.readTree(deposit.body());
+        assertEquals("DEPOSIT", depositResponse.get("type").asText());
+        assertEquals("Paycheck", depositResponse.get("note").asText());
+        assertEquals(0, depositResponse.get("amount").decimalValue().compareTo(new BigDecimal("2.50")));
+
+        HttpResponse<String> withdrawal = post(
+                client, APP.getLocalPort(), "/api/accounts/" + accountId + "/withdraw",
+                "{\"amount\":1.25,\"note\":\"Cash\"}");
+        assertEquals(201, withdrawal.statusCode());
+        assertEquals("WITHDRAWAL", mapper.readTree(withdrawal.body()).get("type").asText());
+
+        for (String amount : List.of("0", "-1", "1.001")) {
+            HttpResponse<String> invalid = post(
+                    client, APP.getLocalPort(), "/api/accounts/" + accountId + "/withdraw",
+                    "{\"amount\":" + amount + "}");
+            assertEquals(400, invalid.statusCode());
+            assertEquals("VALIDATION_ERROR", mapper.readTree(invalid.body()).get("code").asText());
+        }
+
+        HttpResponse<String> overdraft = post(
+                client, APP.getLocalPort(), "/api/accounts/" + accountId + "/withdraw",
+                "{\"amount\":100.00}");
+        assertEquals(422, overdraft.statusCode());
+        assertEquals("INSUFFICIENT_FUNDS", mapper.readTree(overdraft.body()).get("code").asText());
+
+        JsonNode account = mapper.readTree(get(client, APP.getLocalPort(), "/api/accounts/" + accountId).body());
+        assertEquals(0, account.get("balance").decimalValue().compareTo(new BigDecimal("11.25")));
+        assertEquals(1_125, ledgerBalance(accountId));
+        assertEquals(3, transactionCount(accountId));
+    }
+
+    @Test
+    void fiftyParallelWithdrawalsCannotOverdraw() throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+        ObjectMapper mapper = new ObjectMapper();
+        String email = "concurrent-" + UUID.randomUUID() + "@example.com";
+        HttpResponse<String> created = post(client, APP.getLocalPort(), "/api/accounts",
+                "{\"name\":\"Concurrent account\",\"email\":\"" + email + "\",\"initial_deposit\":1.00}");
+        UUID accountId = UUID.fromString(mapper.readTree(created.body()).get("id").asText());
+
+        int requests = 50;
+        CountDownLatch ready = new CountDownLatch(requests);
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(requests);
+        List<Future<Integer>> responses = new ArrayList<>();
+        try {
+            for (int i = 0; i < requests; i++) {
+                responses.add(executor.submit(() -> {
+                    ready.countDown();
+                    if (!start.await(10, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Start timed out");
+                    }
+                    return post(client, APP.getLocalPort(), "/api/accounts/" + accountId + "/withdraw",
+                            "{\"amount\":0.10}").statusCode();
+                }));
+            }
+            assertTrue(ready.await(10, TimeUnit.SECONDS));
+            start.countDown();
+
+            int successful = 0;
+            int insufficient = 0;
+            for (Future<Integer> response : responses) {
+                int status = response.get(60, TimeUnit.SECONDS);
+                if (status == 201) {
+                    successful++;
+                } else if (status == 422) {
+                    insufficient++;
+                }
+            }
+            assertEquals(10, successful);
+            assertEquals(40, insufficient);
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+        }
+
+        JsonNode account = mapper.readTree(get(client, APP.getLocalPort(), "/api/accounts/" + accountId).body());
+        assertEquals(0, account.get("balance").decimalValue().compareTo(BigDecimal.ZERO));
+        assertEquals(0, ledgerBalance(accountId));
+        assertEquals(10, transactionCount(accountId, "WITHDRAWAL"));
+        assertEquals(11, transactionCount(accountId));
+    }
+
+    @Test
     void appliesSchemaMigrationAtStartup() throws SQLException {
         try (Connection connection = openConnection();
              Statement statement = connection.createStatement();
@@ -142,6 +246,44 @@ class BankApplicationTest {
     private static Connection openConnection() throws SQLException {
         return DriverManager.getConnection(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+    }
+
+    private static int transactionCount(UUID accountId) throws SQLException {
+        return transactionCount(accountId, null);
+    }
+
+    private static int transactionCount(UUID accountId, String type) throws SQLException {
+        String query = type == null
+                ? "SELECT COUNT(*) FROM transactions WHERE account_id = ?"
+                : "SELECT COUNT(*) FROM transactions WHERE account_id = ? AND type = ?";
+        try (Connection connection = openConnection();
+             PreparedStatement statement = connection.prepareStatement(query)) {
+            statement.setObject(1, accountId);
+            if (type != null) {
+                statement.setString(2, type);
+            }
+            try (ResultSet result = statement.executeQuery()) {
+                assertTrue(result.next());
+                return result.getInt(1);
+            }
+        }
+    }
+
+    private static long ledgerBalance(UUID accountId) throws SQLException {
+        try (Connection connection = openConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT COALESCE(SUM(CASE
+                         WHEN type IN ('DEPOSIT', 'TRANSFER_IN') THEN amount_cents
+                         ELSE -amount_cents
+                     END), 0)
+                     FROM transactions WHERE account_id = ?
+                     """)) {
+            statement.setObject(1, accountId);
+            try (ResultSet result = statement.executeQuery()) {
+                assertTrue(result.next());
+                return result.getLong(1);
+            }
+        }
     }
 
     private static void assertIndexContains(String table, String expectedDefinition) throws SQLException {
