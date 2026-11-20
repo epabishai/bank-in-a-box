@@ -30,3 +30,28 @@ body {
   min-height: 100vh;
   margin: 0;
 }
+
+.balance-amount {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+
+.balance-shimmer {
+  background: linear-gradient(100deg, #8b8fa8 20%, #e8eaf0 40%, #8b8fa8 60%);
+  background-size: 200% auto;
+  background-clip: text;
+  color: transparent;
+  animation: balance-shimmer 1.8s linear infinite;
+}
+
+@keyframes balance-shimmer {
+  to {
+    background-position: 200% center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .balance-shimmer {
+    animation: none;
+  }
+}
