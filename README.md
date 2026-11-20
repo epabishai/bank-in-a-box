@@ -66,6 +66,12 @@ Day-2 (live, optional)  26 overdraft protection  27 CSV export
 
 ## Run it
 
+### Frontend development
+
+The frontend is in `frontend/`. Run `npm ci` and `npm run dev` from that
+directory; Vite proxies `/api` requests to the local backend on port 8080.
+Inter and JetBrains Mono are loaded from Google Fonts (fonts.googleapis.com).
+
 ```bash
 gh repo create my-org/bank-in-a-box --private --source . --push
 ./scripts/bootstrap.sh my-org/bank-in-a-box
