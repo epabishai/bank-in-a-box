@@ -36,7 +36,8 @@ export default function TransactionHistory({ accountId }) {
             <div key={item} className="h-20 rounded-md border border-border bg-surface" />
           ))}
         </div>
-      ) : history.isError ? (
+      ) : null}
+      {history.isError && (
         <div className="mt-4 rounded-md border border-border bg-surface p-5" role="alert">
           <p className="text-danger">{history.error.message}</p>
           <button
@@ -46,11 +47,36 @@ export default function TransactionHistory({ accountId }) {
           >
             Retry
           </button>
+          {page > 1 && !history.data && (
+            <nav className="mt-3" aria-label="Transaction history pagination">
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                className="rounded-md border border-border px-4 py-2 text-text hover:border-accent hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              >
+                Previous
+              </button>
+            </nav>
+          )}
         </div>
-      ) : history.data.items.length === 0 ? (
-        <p className="mt-4 rounded-md border border-border bg-surface p-5 text-muted">
-          No transactions yet — make your first deposit
-        </p>
+      )}
+      {history.isLoading || !history.data ? null : history.data.items.length === 0 ? (
+        <div className="mt-4 rounded-md border border-border bg-surface p-5">
+          <p className="text-muted">
+            {history.data.total === 0
+              ? "No transactions yet — make your first deposit"
+              : "No transactions on this page."}
+          </p>
+          {page > 1 && (
+            <button
+              type="button"
+              onClick={() => setPage(1)}
+              className="mt-3 rounded-md border border-accent px-4 py-2 text-accent hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              Back to first page
+            </button>
+          )}
+        </div>
       ) : (
         <>
           <ul
