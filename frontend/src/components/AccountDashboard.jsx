@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import apiClient from "../api/client.js";
 import TransactionForm from "./TransactionForm.jsx";
+import TransactionHistory from "./TransactionHistory.jsx";
 
 const formatMoney = (amount) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(amount));
@@ -8,20 +9,13 @@ const formatMoney = (amount) =>
 const toCents = (amount) => Math.round(Number(amount) * 100);
 const fromCents = (cents) => (cents / 100).toFixed(2);
 const accountKey = (id) => ["account", id];
-const historyKey = (id) => ["transactions", id];
+const historyKey = (id, page = 1) => ["transactions", id, page];
 
 export default function AccountDashboard({ accountId }) {
   const queryClient = useQueryClient();
   const account = useQuery({
     queryKey: accountKey(accountId),
     queryFn: async () => (await apiClient.get(`/accounts/${encodeURIComponent(accountId)}`)).data,
-  });
-  const history = useQuery({
-    queryKey: historyKey(accountId),
-    queryFn: async () =>
-      (await apiClient.get(`/accounts/${encodeURIComponent(accountId)}/transactions`, {
-        params: { page: 1, limit: 20 },
-      })).data,
   });
   const mutateTransaction = (type) => ({
     mutationFn: async ({ amount, note }) =>
@@ -100,38 +94,7 @@ export default function AccountDashboard({ accountId }) {
           <TransactionForm type="withdraw" mutation={withdraw} busy={busy} />
         </section>
 
-        <section className="mt-10" aria-labelledby="history-heading">
-          <h2 id="history-heading" className="text-xl font-bold">Recent activity</h2>
-          {history.isLoading ? (
-            <p className="mt-4 text-muted" aria-busy="true">Loading transactions…</p>
-          ) : history.isError ? (
-            <p className="mt-4 text-danger" role="alert">{history.error.message}</p>
-          ) : history.data.items.length === 0 ? (
-            <p className="mt-4 rounded-md border border-border bg-surface p-5 text-muted">
-              No transactions yet — make your first deposit
-            </p>
-          ) : (
-            <ul className="mt-4 max-h-96 divide-y divide-border overflow-y-auto rounded-md border border-border bg-surface">
-              {history.data.items.map((transaction) => (
-                <li key={transaction.id} className="flex items-center justify-between gap-4 p-4">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span aria-hidden="true" className="text-lg text-accent">
-                      {transaction.type === "DEPOSIT" || transaction.type === "TRANSFER_IN" ? "↓" : "↑"}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="font-medium">{transaction.type.replace("_", " ")}</p>
-                      {transaction.note && <p className="truncate text-sm text-muted">{transaction.note}</p>}
-                      <time className="text-xs text-muted" dateTime={transaction.createdAt}>
-                        {new Date(transaction.createdAt).toLocaleString()}
-                      </time>
-                    </div>
-                  </div>
-                  <span className="shrink-0 font-mono tabular-nums">{formatMoney(transaction.amount)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        <TransactionHistory accountId={accountId} />
       </section>
     </main>
   );
