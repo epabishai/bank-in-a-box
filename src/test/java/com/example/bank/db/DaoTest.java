@@ -118,6 +118,30 @@ class DaoTest {
     }
 
     @Test
+    void transactionPageQueryUsesV1AccountHistoryIndex() {
+        UUID accountId = UUID.randomUUID();
+        jdbi.onDemand(AccountDao.class).insert(accountId, "A", "index@example.com", 0);
+        jdbi.useHandle(handle -> handle.createUpdate("""
+                INSERT INTO transactions (id, account_id, type, amount_cents, created_at)
+                SELECT md5('history-' || sequence_number)::uuid, :accountId, 'DEPOSIT', 1,
+                       now() + sequence_number * interval '1 second'
+                FROM generate_series(1, 5000) AS history(sequence_number)
+                """).bind("accountId", accountId).execute());
+        jdbi.useHandle(handle -> handle.execute("ANALYZE transactions"));
+
+        List<String> plan = jdbi.withHandle(handle -> handle.createQuery("""
+                EXPLAIN (ANALYZE, BUFFERS)
+                SELECT id, account_id, type, amount_cents, note, created_at
+                FROM transactions WHERE account_id = :accountId
+                ORDER BY created_at DESC, id DESC LIMIT 20 OFFSET 0
+                """).bind("accountId", accountId).mapTo(String.class).list());
+
+        assertTrue(String.join("\n", plan).contains("idx_transactions_account_created_at"),
+                () -> "Expected transaction page query to use the V1 account history index: " + plan);
+        assertEquals(20, jdbi.onDemand(TransactionDao.class).listByAccount(accountId, 20, 0).size());
+    }
+
+    @Test
     void failedLedgerInsertRollsBackBalanceUpdate() {
         UUID id = UUID.randomUUID();
         jdbi.onDemand(AccountDao.class).insert(id, "A", "a@example.com", 0);

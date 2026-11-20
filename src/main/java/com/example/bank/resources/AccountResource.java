@@ -2,6 +2,7 @@ package com.example.bank.resources;
 
 import com.example.bank.api.AccountResponse;
 import com.example.bank.api.CreateAccountRequest;
+import com.example.bank.api.TransactionPageResponse;
 import com.example.bank.api.TransactionRequest;
 import com.example.bank.api.TransactionResponse;
 import com.example.bank.core.Account;
@@ -10,11 +11,13 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
@@ -45,6 +48,16 @@ public final class AccountResource {
     @Path("/{id}")
     public AccountResponse get(@PathParam("id") String id) {
         return AccountResponse.from(accountService.get(parseAccountId(id)));
+    }
+
+    @GET
+    @Path("/{id}/transactions")
+    public TransactionPageResponse transactions(@PathParam("id") String id,
+                                                @DefaultValue("1") @QueryParam("page") String pageValue,
+                                                @DefaultValue("20") @QueryParam("limit") String limitValue) {
+        int page = parsePositiveInteger(pageValue, "page");
+        int limit = Math.min(parsePositiveInteger(limitValue, "limit"), 100);
+        return accountService.listTransactions(parseAccountId(id), page, limit);
     }
 
     @POST
@@ -82,5 +95,18 @@ public final class AccountResource {
         } catch (IllegalArgumentException exception) {
             throw new BadRequestException("Account id must be a UUID", exception);
         }
+    }
+
+    private static int parsePositiveInteger(String value, String name) {
+        int parsed;
+        try {
+            parsed = Integer.parseInt(value);
+        } catch (NumberFormatException exception) {
+            throw new BadRequestException(name + " must be a positive integer", exception);
+        }
+        if (parsed < 1) {
+            throw new BadRequestException(name + " must be a positive integer");
+        }
+        return parsed;
     }
 }

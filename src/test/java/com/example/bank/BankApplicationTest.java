@@ -22,6 +22,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -154,6 +156,59 @@ class BankApplicationTest {
         assertEquals(0, account.get("balance").decimalValue().compareTo(new BigDecimal("11.25")));
         assertEquals(1_125, ledgerBalance(accountId));
         assertEquals(3, transactionCount(accountId));
+    }
+
+    @Test
+    void paginatesTransactionHistoryNewestFirstAndValidatesParameters() throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+        ObjectMapper mapper = new ObjectMapper();
+        String email = "history-" + UUID.randomUUID() + "@example.com";
+        HttpResponse<String> created = post(client, APP.getLocalPort(), "/api/accounts",
+                "{\"name\":\"History account\",\"email\":\"" + email + "\"}");
+        UUID accountId = UUID.fromString(mapper.readTree(created.body()).get("id").asText());
+        insertHistoryTransactions(accountId, 23);
+
+        JsonNode firstPage = mapper.readTree(get(client, APP.getLocalPort(),
+                "/api/accounts/" + accountId + "/transactions").body());
+        assertEquals(1, firstPage.get("page").asInt());
+        assertEquals(20, firstPage.get("limit").asInt());
+        assertEquals(23, firstPage.get("total").asLong());
+        assertEquals(20, firstPage.get("items").size());
+        assertEquals("history-23", firstPage.get("items").get(0).get("note").asText());
+        assertEquals("history-4", firstPage.get("items").get(19).get("note").asText());
+
+        JsonNode secondPage = mapper.readTree(get(client, APP.getLocalPort(),
+                "/api/accounts/" + accountId + "/transactions?page=2&limit=20").body());
+        assertEquals(2, secondPage.get("page").asInt());
+        assertEquals(3, secondPage.get("items").size());
+        assertEquals("history-3", secondPage.get("items").get(0).get("note").asText());
+        assertEquals("history-1", secondPage.get("items").get(2).get("note").asText());
+
+        JsonNode cappedPage = mapper.readTree(get(client, APP.getLocalPort(),
+                "/api/accounts/" + accountId + "/transactions?limit=1000").body());
+        assertEquals(100, cappedPage.get("limit").asInt());
+        assertEquals(23, cappedPage.get("items").size());
+
+        JsonNode pastEndPage = mapper.readTree(get(client, APP.getLocalPort(),
+                "/api/accounts/" + accountId + "/transactions?page=3&limit=20").body());
+        assertEquals(23, pastEndPage.get("total").asLong());
+        assertEquals(0, pastEndPage.get("items").size());
+
+        for (String query : List.of("?page=0", "?limit=0", "?page=invalid", "?limit=invalid")) {
+            HttpResponse<String> invalid = get(client, APP.getLocalPort(),
+                    "/api/accounts/" + accountId + "/transactions" + query);
+            assertEquals(400, invalid.statusCode());
+            assertEquals("VALIDATION_ERROR", mapper.readTree(invalid.body()).get("code").asText());
+        }
+
+        String emptyEmail = "empty-history-" + UUID.randomUUID() + "@example.com";
+        HttpResponse<String> emptyCreated = post(client, APP.getLocalPort(), "/api/accounts",
+                "{\"name\":\"Empty history\",\"email\":\"" + emptyEmail + "\"}");
+        UUID emptyAccountId = UUID.fromString(mapper.readTree(emptyCreated.body()).get("id").asText());
+        JsonNode emptyPage = mapper.readTree(get(client, APP.getLocalPort(),
+                "/api/accounts/" + emptyAccountId + "/transactions").body());
+        assertEquals(0, emptyPage.get("total").asLong());
+        assertEquals(0, emptyPage.get("items").size());
     }
 
     @Test
@@ -298,6 +353,24 @@ class BankApplicationTest {
                 }
             }
             assertTrue(found, "Expected index definition containing " + expectedDefinition);
+        }
+    }
+
+    private static void insertHistoryTransactions(UUID accountId, int count) throws SQLException {
+        try (Connection connection = openConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     INSERT INTO transactions (id, account_id, type, amount_cents, note, created_at)
+                     VALUES (?, ?, 'DEPOSIT', 100, ?, ?)
+                     """)) {
+            Instant base = Instant.now();
+            for (int i = 1; i <= count; i++) {
+                statement.setObject(1, UUID.randomUUID());
+                statement.setObject(2, accountId);
+                statement.setString(3, "history-" + i);
+                statement.setTimestamp(4, Timestamp.from(base.plusSeconds(i)));
+                statement.addBatch();
+            }
+            statement.executeBatch();
         }
     }
 
