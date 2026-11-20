@@ -1,6 +1,7 @@
 package com.example.bank.service;
 
 import com.example.bank.api.CreateAccountRequest;
+import com.example.bank.api.TransactionPageResponse;
 import com.example.bank.core.Account;
 import com.example.bank.core.Money;
 import com.example.bank.core.Transaction;
@@ -48,6 +49,18 @@ public final class AccountService {
     public Account get(UUID id) {
         return jdbi.withHandle(handle -> handle.attach(AccountDao.class).findById(id)
                 .orElseThrow(AccountNotFoundException::new));
+    }
+
+    public TransactionPageResponse listTransactions(UUID accountId, int page, int limit) {
+        return jdbi.withHandle(handle -> {
+            AccountDao accounts = handle.attach(AccountDao.class);
+            accounts.findById(accountId).orElseThrow(AccountNotFoundException::new);
+            TransactionDao transactions = handle.attach(TransactionDao.class);
+            long total = transactions.countByAccount(accountId);
+            long offset = (page - 1L) * limit;
+            return TransactionPageResponse.from(
+                    transactions.listByAccount(accountId, limit, offset), page, limit, total);
+        });
     }
 
     public Transaction deposit(UUID accountId, BigDecimal amount, String note) {
