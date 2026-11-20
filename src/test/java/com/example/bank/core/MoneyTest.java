@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -62,6 +63,20 @@ class MoneyTest {
     void roundTripsFullRangeOfCents() {
         for (long cents : new long[]{Long.MIN_VALUE, -10001, -1, 0, 1, 10001, Long.MAX_VALUE}) {
             assertEquals(new Money(cents), Money.fromBigDecimal(new Money(cents).toBigDecimal()));
+        }
+    }
+
+    @Test
+    void arithmeticAndDecimalRoundTripsPreserveRandomCentsExactly() {
+        Random random = new Random(0xB4A7L);
+        for (int i = 0; i < 1_000; i++) {
+            long first = random.nextLong(-1_000_000_000_000L, 1_000_000_000_000L);
+            long second = random.nextLong(-1_000_000_000_000L, 1_000_000_000_000L);
+            Money amount = new Money(first);
+            Money adjustment = new Money(second);
+
+            assertEquals(amount, amount.add(adjustment).subtract(adjustment));
+            assertEquals(amount, Money.fromBigDecimal(amount.toBigDecimal()));
         }
     }
 }
