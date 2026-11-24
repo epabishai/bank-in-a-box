@@ -27,6 +27,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -264,6 +265,78 @@ class BankApplicationTest {
         assertEquals(0, ledgerBalance(accountId));
         assertEquals(10, transactionCount(accountId, "WITHDRAWAL"));
         assertEquals(11, transactionCount(accountId));
+    }
+
+    @Test
+    void fiftyParallelDepositsRemainAtomic() throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+        ObjectMapper mapper = new ObjectMapper();
+        String email = "concurrent-deposit-" + UUID.randomUUID() + "@example.com";
+        HttpResponse<String> created = post(client, APP.getLocalPort(), "/api/accounts",
+                "{\"name\":\"Concurrent deposit account\",\"email\":\"" + email + "\"}");
+        UUID accountId = UUID.fromString(mapper.readTree(created.body()).get("id").asText());
+
+        int requests = 50;
+        CountDownLatch ready = new CountDownLatch(requests);
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(requests);
+        List<Future<Integer>> responses = new ArrayList<>();
+        try {
+            for (int i = 0; i < requests; i++) {
+                responses.add(executor.submit(() -> {
+                    ready.countDown();
+                    if (!start.await(10, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Start timed out");
+                    }
+                    return post(client, APP.getLocalPort(), "/api/accounts/" + accountId + "/deposit",
+                            "{\"amount\":0.10}").statusCode();
+                }));
+            }
+            assertTrue(ready.await(10, TimeUnit.SECONDS));
+            start.countDown();
+
+            for (Future<Integer> response : responses) {
+                assertEquals(201, response.get(60, TimeUnit.SECONDS));
+            }
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+        }
+
+        JsonNode account = mapper.readTree(get(client, APP.getLocalPort(), "/api/accounts/" + accountId).body());
+        assertEquals(0, account.get("balance").decimalValue().compareTo(new BigDecimal("5.00")));
+        assertEquals(5_00, ledgerBalance(accountId));
+        assertEquals(requests, transactionCount(accountId, "DEPOSIT"));
+    }
+
+    @Test
+    void randomMixedOperationsKeepBalanceEqualToLedger() throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+        ObjectMapper mapper = new ObjectMapper();
+        String email = "random-ledger-" + UUID.randomUUID() + "@example.com";
+        HttpResponse<String> created = post(client, APP.getLocalPort(), "/api/accounts",
+                "{\"name\":\"Random ledger account\",\"email\":\"" + email + "\"}");
+        UUID accountId = UUID.fromString(mapper.readTree(created.body()).get("id").asText());
+
+        Random random = new Random(20);
+        long expectedCents = 0;
+        for (int i = 0; i < 100; i++) {
+            long amountCents = (random.nextInt(10) + 1) * 25L;
+            boolean deposit = random.nextBoolean() || expectedCents < amountCents;
+            String operation = deposit ? "deposit" : "withdraw";
+            HttpResponse<String> response = post(client, APP.getLocalPort(),
+                    "/api/accounts/" + accountId + "/" + operation,
+                    "{\"amount\":" + BigDecimal.valueOf(amountCents, 2).toPlainString() + "}");
+            assertEquals(201, response.statusCode());
+            expectedCents += deposit ? amountCents : -amountCents;
+        }
+
+        JsonNode account = mapper.readTree(get(client, APP.getLocalPort(), "/api/accounts/" + accountId).body());
+        assertEquals(0, account.get("balance").decimalValue()
+                .compareTo(BigDecimal.valueOf(expectedCents, 2)));
+        assertEquals(expectedCents, ledgerBalance(accountId));
+        assertEquals(100, transactionCount(accountId));
     }
 
     @Test
