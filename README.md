@@ -72,6 +72,14 @@ The frontend is in `frontend/`. Run `npm ci` and `npm run dev` from that
 directory; Vite proxies `/api` requests to the local backend on port 8080.
 Inter and JetBrains Mono are loaded from Google Fonts (fonts.googleapis.com).
 
+```bash
+gh repo create my-org/bank-in-a-box --private --source . --push
+./scripts/bootstrap.sh my-org/bank-in-a-box
+gh aw run orchestrator
+```
+
+Then watch: issue 1 (ADRs) is the only unblocked issue, so it goes first. After you merge it, issues 2, 3 and 12 unblock and the orchestrator starts two at a time.
+
 ### Build the complete application
 
 With Java 21 and Node.js installed, build the frontend **before** packaging Java:
@@ -96,20 +104,12 @@ unknown non-API GET/HEAD paths. The index (including fallback) uses `no-cache`;
 hash-named assets use a one-year immutable cache. Other methods keep JSON errors.
 The `/api` namespace and administrative port are not routed through the SPA.
 
-```bash
-gh repo create my-org/bank-in-a-box --private --source . --push
-./scripts/bootstrap.sh my-org/bank-in-a-box
-gh aw run orchestrator
-```
-
-Then watch: issue 1 (ADRs) is the only unblocked issue, so it goes first. After you merge it, issues 2, 3 and 12 unblock and the orchestrator starts two at a time.
-
 ### CI
 
 The required `ci` check runs on pull requests and pushes to `main`. It requires the Java 21 Maven verification and, when `frontend/package.json` exists, the Node.js 24 frontend install, Vitest tests, and build. Download any generated test reports from the workflow run’s **Artifacts** section, including reports from failing tests.
 
 API errors use JSON objects with `error` and `code`. In addition to the domain
-codes in the spec, unmatched routes currently return `NOT_FOUND`, and other
+codes in the spec, unmatched API routes return `NOT_FOUND`, and other
 framework-generated client errors use `HTTP_ERROR` (with the original HTTP
 status). Server failures use `INTERNAL_ERROR` without exposing failure details.
 
