@@ -1,0 +1,31 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: 8080
+      ENV: production
+      DB_URL: jdbc:postgresql://db:5432/bank
+      DB_USER: ${DB_USER:-bank}
+      DB_PASSWORD: ${DB_PASSWORD:-bank}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: bank
+      POSTGRES_USER: ${DB_USER:-bank}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-bank}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

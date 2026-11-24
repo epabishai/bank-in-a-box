@@ -104,6 +104,16 @@ unknown non-API GET/HEAD paths. The index (including fallback) uses `no-cache`;
 hash-named assets use a one-year immutable cache. Other methods keep JSON errors.
 The `/api` namespace and administrative port are not routed through the SPA.
 
+### Run with Docker Compose
+
+Build and start the application and PostgreSQL with `docker compose up --build`,
+then open `http://localhost:8080`. PostgreSQL data is kept in a named volume
+across `docker compose down` and subsequent starts. Use `docker compose down -v`
+to remove the database volume. Set `DB_USER` and `DB_PASSWORD` in the shell or a
+local `.env` file to override the development credentials; these values are
+passed to the containers at runtime, so deployment-specific credentials are not
+included in the app image.
+
 ### CI
 
 The required `ci` check runs on pull requests and pushes to `main`. It requires the Java 21 Maven verification and, when `frontend/package.json` exists, the Node.js 24 frontend install, Vitest tests, and build. Download any generated test reports from the workflow run’s **Artifacts** section, including reports from failing tests.
