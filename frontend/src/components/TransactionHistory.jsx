@@ -31,7 +31,7 @@ export default function TransactionHistory({ accountId }) {
     <section className="mt-10" aria-labelledby="history-heading">
       <h2 id="history-heading" className="text-xl font-bold">Recent activity</h2>
       {history.isLoading ? (
-        <div className="mt-4 space-y-2" aria-busy="true" aria-label="Loading transactions">
+        <div className="mt-4 space-y-2" role="status" aria-busy="true" aria-label="Loading transactions">
           {[0, 1, 2].map((item) => (
             <div key={item} className="h-20 rounded-md border border-border bg-surface" />
           ))}

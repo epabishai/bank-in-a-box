@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "vitest run"
+    "test": "vitest run --coverage"
   },
   "dependencies": {
     "@tanstack/react-query": "5.108.1",
@@ -19,6 +19,8 @@
     "@testing-library/jest-dom": "8.0.0",
     "@testing-library/react": "16.3.3",
     "@vitejs/plugin-react": "6.3.0",
+    "@vitest/coverage-v8": "5.1.1",
+    "jest-axe": "11.0.0",
     "jsdom": "31.0.1",
     "tailwindcss": "4.3.5",
     "vite": "8.3.8",
