@@ -73,7 +73,9 @@ class BankApplicationTest {
         assertEquals(200, apiHealth.statusCode());
         assertTrue(apiHealth.headers().firstValue("Content-Type").orElse("").contains("application/json"));
         assertTrue(apiHealth.body().contains("\"status\":\"ok\""));
-        assertEquals(404, root.statusCode());
+        assertEquals(200, root.statusCode());
+        assertTrue(root.headers().firstValue("Content-Type").orElse("").contains("text/html"));
+        assertEquals("no-cache", root.headers().firstValue("Cache-Control").orElse(""));
         assertEquals(200, adminHealth.statusCode());
     }
 

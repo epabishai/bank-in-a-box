@@ -80,15 +80,38 @@ gh aw run orchestrator
 
 Then watch: issue 1 (ADRs) is the only unblocked issue, so it goes first. After you merge it, issues 2, 3 and 12 unblock and the orchestrator starts two at a time.
 
+### Build the complete application
+
+With Java 21 and Node.js installed, build the frontend **before** packaging Java:
+
+```bash
+cd frontend
+npm ci
+npm test
+npm run build
+cd ..
+mvn -B clean verify
+java -jar target/bank-in-a-box-1.0-SNAPSHOT.jar server src/main/resources/config.yml
+```
+
+Maven copies `frontend/dist` into classpath `assets` in the shaded JAR; it does
+not run npm. Backend-only tests use test fixtures and do not require a frontend
+build, but a deployable artifact does. Rebuild with `clean` after changing the
+frontend to remove stale hashed assets. PostgreSQL must be available to run the app.
+
+The application port serves static files and falls back to `index.html` for
+unknown non-API GET/HEAD paths. The index (including fallback) uses `no-cache`;
+hash-named assets use a one-year immutable cache. Other methods keep JSON errors.
+The `/api` namespace and administrative port are not routed through the SPA.
+
 ### CI
 
 The required `ci` check runs on pull requests and pushes to `main`. It requires the Java 21 Maven verification and, when `frontend/package.json` exists, the Node.js 24 frontend install, Vitest tests, and build. Download any generated test reports from the workflow run’s **Artifacts** section, including reports from failing tests.
 
 API errors use JSON objects with `error` and `code`. In addition to the domain
-codes in the spec, unmatched routes currently return `NOT_FOUND`, and other
+codes in the spec, unmatched API routes return `NOT_FOUND`, and other
 framework-generated client errors use `HTTP_ERROR` (with the original HTTP
 status). Server failures use `INTERNAL_ERROR` without exposing failure details.
-The non-API 404 handler is temporary until the SPA fallback in ADR-004 is implemented.
 
 ## Reset for the next demo
 

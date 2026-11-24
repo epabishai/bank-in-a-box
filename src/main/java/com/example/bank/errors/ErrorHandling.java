@@ -22,19 +22,6 @@ public final class ErrorHandling {
         environment.jersey().register(WebExceptionMapper.class);
         environment.jersey().register(UnhandledExceptionMapper.class);
         environment.jersey().register(ErrorResponseFilter.class);
-        // Jersey is mapped to /api/*; this servlet handles unmatched application paths.
-        environment.servlets().addServlet("json-not-found", new HttpServlet() {
-            @Override
-            protected void service(HttpServletRequest request, HttpServletResponse response) throws IOException {
-                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                response.setContentType("application/json");
-                response.setCharacterEncoding("UTF-8");
-                if (!"HEAD".equals(request.getMethod())) {
-                    environment.getObjectMapper().writeValue(response.getOutputStream(), ErrorResponses.NOT_FOUND);
-                }
-            }
-        }).addMapping("/");
-
         // Servlet filters can call sendError before Jersey gets control.
         var errorPages = new ErrorPageErrorHandler() {
             @Override
