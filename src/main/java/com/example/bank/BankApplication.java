@@ -8,6 +8,7 @@ import io.dropwizard.core.setup.Environment;
 import io.dropwizard.core.server.AbstractServerFactory;
 import com.example.bank.errors.ErrorHandling;
 import com.example.bank.resources.AccountResource;
+import com.example.bank.web.SpaAssets;
 import com.example.bank.service.AccountService;
 import org.flywaydb.core.Flyway;
 import org.jdbi.v3.core.Jdbi;
@@ -34,11 +35,7 @@ public class BankApplication extends Application<BankConfiguration> {
 
     @Override
     public void run(BankConfiguration configuration, Environment environment) {
-        // Register our providers instead of Dropwizard's competing default mappers.
-        if (configuration.getServerFactory() instanceof AbstractServerFactory serverFactory) {
-            serverFactory.setRegisterDefaultExceptionMappers(false);
-        }
-        ErrorHandling.register(environment);
+        registerWeb(configuration, environment);
         Flyway.configure()
                 .dataSource(
                         configuration.getDatabase().getUrl(),
@@ -49,7 +46,16 @@ public class BankApplication extends Application<BankConfiguration> {
                 .migrate();
         Jdbi jdbi = new JdbiFactory().build(environment, configuration.getDatabase(), "database");
         jdbi.installPlugin(new SqlObjectPlugin());
-        environment.jersey().register(new HealthResource());
         environment.jersey().register(new AccountResource(new AccountService(jdbi)));
+    }
+
+    protected void registerWeb(BankConfiguration configuration, Environment environment) {
+        // Register our providers instead of Dropwizard's competing default mappers.
+        if (configuration.getServerFactory() instanceof AbstractServerFactory serverFactory) {
+            serverFactory.setRegisterDefaultExceptionMappers(false);
+        }
+        ErrorHandling.register(environment);
+        SpaAssets.register(environment);
+        environment.jersey().register(new HealthResource());
     }
 }

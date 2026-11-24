@@ -204,11 +204,21 @@ class ErrorHandlingTest {
     }
 
     @Test
-    void unknownRoutesInsideAndOutsideApiAreJson() throws Exception {
-        for (String path : new String[]{"/api/unknown", "/api", "/", "/unknown", "/unknown/deep"}) {
+    void unknownApiRoutesAndNonGetRequestsAreJson() throws Exception {
+        for (String path : new String[]{"/api/unknown", "/api"}) {
             assertError(request("GET", path, null, null, null), 404, "NOT_FOUND");
         }
         assertError(request("POST", "/outside", "{}", "application/json", null), 404, "NOT_FOUND");
+    }
+
+    @Test
+    void nonApiGetRoutesServeSpa() throws Exception {
+        for (String path : new String[]{"/", "/unknown", "/unknown/deep"}) {
+            var response = request("GET", path, null, null, null);
+            assertEquals(200, response.statusCode());
+            assertTrue(response.headers().firstValue("Content-Type").orElse("").startsWith("text/html"));
+            assertEquals("no-cache", response.headers().firstValue("Cache-Control").orElse(""));
+        }
     }
 
     @Test
