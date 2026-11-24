@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { axe } from "jest-axe";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import apiClient from "../api/client.js";
 import AccountDashboard from "./AccountDashboard.jsx";
@@ -33,6 +34,39 @@ function account() {
 }
 
 describe("AccountDashboard", () => {
+  it("has no detectable accessibility violations", async () => {
+    apiClient.defaults.adapter = async (config) => {
+      if (config.method === "get" && config.url.endsWith("/transactions")) {
+        return response(config, { items: [], page: 1, limit: 20, total: 0 });
+      }
+      return response(config, account());
+    };
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { container } = render(
+      <QueryClientProvider client={queryClient}>
+        <AccountDashboard accountId={accountId} />
+      </QueryClientProvider>,
+    );
+    await screen.findByText("$100.00");
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("renders account lookup errors inline", async () => {
+    apiClient.defaults.adapter = async (config) => {
+      if (config.url.endsWith("/transactions")) {
+        return response(config, { items: [], page: 1, limit: 20, total: 0 });
+      }
+      return Promise.reject({
+        config,
+        response: { status: 404, data: { error: "Account not found", code: "ACCOUNT_NOT_FOUND" } },
+      });
+    };
+    renderDashboard();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Account not found");
+  });
+
   it("optimistically updates the balance and rolls it back with the server message on failure", async () => {
     let rejectWithdrawal;
     apiClient.defaults.adapter = async (config) => {
@@ -167,6 +201,27 @@ describe("AccountDashboard", () => {
     renderDashboard();
 
     expect(await screen.findByText("No transactions yet — make your first deposit")).toBeInTheDocument();
+  });
+
+  it("offers a route back when a later history page is empty", async () => {
+    apiClient.defaults.adapter = async (config) => {
+      if (config.method === "get" && config.url.endsWith("/transactions")) {
+        return response(config, {
+          items: config.params.page === 1 ? [{ id: "tx-1", type: "DEPOSIT", amount: "5", createdAt: "2026-01-01T00:00:00Z" }] : [],
+          page: config.params.page,
+          limit: 20,
+          total: 21,
+        });
+      }
+      return response(config, account());
+    };
+    renderDashboard();
+    await screen.findByText("+$5.00");
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(await screen.findByText("No transactions on this page.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Back to first page" }));
+
+    expect(await screen.findByText("Page 1 of 2")).toBeInTheDocument();
   });
 
   it("shows a loading skeleton and a history error with retry", async () => {

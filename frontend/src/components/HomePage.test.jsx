@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { axe } from "jest-axe";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import apiClient from "../api/client.js";
 import HomePage from "./HomePage.jsx";
@@ -24,6 +25,19 @@ function openCreateDialog() {
 }
 
 describe("HomePage account creation", () => {
+  it("has no detectable accessibility violations", async () => {
+    const { container } = renderHome();
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("keeps the create account dialog accessible", async () => {
+    const { container } = renderHome();
+    openCreateDialog();
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
   it("traps keyboard focus in the modal and restores it when Escape closes", () => {
     renderHome();
     const trigger = screen.getAllByRole("button", { name: "Create account" }).at(-1);
@@ -105,6 +119,21 @@ describe("HomePage account creation", () => {
 });
 
 describe("HomePage account search", () => {
+  it("renders a backend search error inline", async () => {
+    apiClient.defaults.adapter = async (config) =>
+      Promise.reject({
+        config,
+        response: { status: 404, data: { error: "Account not found", code: "ACCOUNT_NOT_FOUND" } },
+      });
+    renderHome();
+    fireEvent.change(screen.getByLabelText("Account ID"), { target: { value: "missing-account" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+
+    const error = await screen.findByRole("status");
+    expect(error).toHaveTextContent("Account not found");
+    expect(screen.getByLabelText("Account ID")).toHaveAttribute("aria-describedby", "account-id-error");
+  });
+
   it("requires an account ID before searching", () => {
     const adapter = vi.fn();
     apiClient.defaults.adapter = adapter;
