@@ -1,0 +1,10 @@
+.git
+**/node_modules
+**/target
+src/test
+frontend/src/**/*.test.*
+frontend/src/test
+.env
+.env.*
+**/.env
+**/.env.*
