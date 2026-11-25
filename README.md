@@ -30,7 +30,6 @@ This repo ships the **team and the plan**, not the app. The app appears as agent
           └──────── merge ◄── CI + CodeQL + dependency review + human review
 ```
 
-`dev-team.yaml` is the same team as a local Docker Agent config, for rehearsing without GitHub.
 
 ### The agent team
 | Agent | Owns | Issues |
@@ -68,9 +67,14 @@ Day-2 (live, optional)  26 overdraft protection  27 CSV export
 
 ### Frontend development
 
-The frontend is in `frontend/`. Run `npm ci` and `npm run dev` from that
+The frontend is in `frontend/`. Run `gh cfs -- npm ci` and `gh cfs -- npm run dev` from that
 directory; Vite proxies `/api` requests to the local backend on port 8080.
 Inter and JetBrains Mono are loaded from Google Fonts (fonts.googleapis.com).
+
+Package-manager commands in the package-firewalled local environment use
+`gh cfs --`. Install the `gh cfs` extension and Azure CLI >=2.54, sign in
+with an account authorized for the CFS feed, and check `gh cfs doctor --auth`
+before installing dependencies.
 
 ```bash
 gh repo create my-org/bank-in-a-box --private --source . --push
@@ -86,9 +90,9 @@ With Java 21 and Node.js installed, build the frontend **before** packaging Java
 
 ```bash
 cd frontend
-npm ci
-npm test
-npm run build
+gh cfs -- npm ci
+gh cfs -- npm test
+gh cfs -- npm run build
 cd ..
 mvn -B clean verify
 java -jar target/bank-in-a-box-1.0-SNAPSHOT.jar server src/main/resources/config.yml
@@ -106,13 +110,27 @@ The `/api` namespace and administrative port are not routed through the SPA.
 
 ### Run with Docker Compose
 
-Build and start the application and PostgreSQL with `docker compose up --build`,
+Build and start the application and PostgreSQL with
+`BUILDX_BAKE_ENTITLEMENTS_FS=0 gh cfs -- docker compose up --build -d`,
 then open `http://localhost:8080`. PostgreSQL data is kept in a named volume
 across `docker compose down` and subsequent starts. Use `docker compose down -v`
 to remove the database volume. Set `DB_USER` and `DB_PASSWORD` in the shell or a
 local `.env` file to override the development credentials; these values are
 passed to the containers at runtime, so deployment-specific credentials are not
 included in the app image.
+
+The wrapper supplies a BuildKit `cfs_feed_token` secret. The frontend install
+uses the CFS npm registry with temporary credentials and a cache on tmpfs;
+credentials are not stored in image layers. `gh` runs on the host, not inside
+the image. For a direct image build, use
+`gh cfs -- docker build -t bank-in-a-box:local .`.
+Compose builds through Buildx Bake, which otherwise refuses to read the
+temporary secret file outside the project; `BUILDX_BAKE_ENTITLEMENTS_FS=0`
+grants that read for the wrapped build.
+Use plain `docker compose logs` and `docker compose down` for non-build operations.
+An uncached build without the wrapper fails because the feed secret is missing
+or empty; starting an already-built image needs no feed credentials:
+`docker compose up --no-build -d`.
 
 ### CI
 

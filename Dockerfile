@@ -1,7 +1,25 @@
+# syntax=docker/dockerfile:1
 FROM node:24-alpine AS frontend
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
+RUN --mount=type=secret,id=cfs_feed_token,required=true \
+    --mount=type=tmpfs,target=/run/cfs-auth \
+    set +x; set -eu; umask 077; \
+    token="$(cat /run/secrets/cfs_feed_token)"; \
+    test -n "$token"; \
+    registry=https://pkgs.dev.azure.com/github-cfs/GitHubCFS/_packaging/github-cfs-oss/npm/registry/; \
+    auth_path=//pkgs.dev.azure.com/github-cfs/GitHubCFS/_packaging/github-cfs-oss/npm; \
+    printf 'registry=%s\nreplace-registry-host=npmjs\n%s/registry/:_authToken=%s\n%s/:_authToken=%s\n' \
+      "$registry" "$auth_path" "$token" "$auth_path" "$token" > /run/cfs-auth/npmrc; \
+    unset token; \
+    : > /run/cfs-auth/global-npmrc; \
+    export NPM_CONFIG_USERCONFIG=/run/cfs-auth/npmrc \
+      NPM_CONFIG_GLOBALCONFIG=/run/cfs-auth/global-npmrc \
+      NPM_CONFIG_CACHE=/run/cfs-auth/npm-cache \
+      NPM_CONFIG_REGISTRY="$registry" \
+      NPM_CONFIG_REPLACE_REGISTRY_HOST=npmjs \
+      NPM_CONFIG_UPDATE_NOTIFIER=false; \
+    npm ci
 COPY frontend/ ./
 RUN npm run build
 

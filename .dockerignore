@@ -8,3 +8,8 @@ frontend/src/test
 .env.*
 **/.env
 **/.env.*
+**/.npmrc
+**/.npm
+**/.netrc
+**/_netrc
+**/.azure
