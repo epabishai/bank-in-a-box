@@ -178,10 +178,14 @@ by a GitHub API 403; the checked-in source adapts the published upstream workflo
 To compile an edit:
 
 ```bash
-gh aw compile ci-doctor
+gh aw compile ci-doctor --strict --action-mode action \
+  --action-tag 53d0749e19424a918acd82b4d140264ce48f2f14
 git diff -- .github/workflows/ci-doctor.md .github/workflows/ci-doctor.lock.yml
 ```
 
+The action tag is the full setup-action commit used by the existing lock files;
+retain it when recompiling with `v1.2.2` to keep generated actions pinned.
+For ShellCheck validation, add `--shellcheck` with ShellCheck installed.
 Commit the Markdown and generated lock file together; never hand-edit the lock.
 To monitor a different workflow or branch, change
 `on.workflow_run.workflows` (the workflow's **name**, currently `CI`) or
@@ -201,11 +205,13 @@ an existing-issue comment, and no reports respectively. Include an untrusted
 log instruction in the fixture and confirm that it is treated only as data.
 Local fixtures cannot prove Copilot diagnosis quality, live issue/comment
 creation, authentication, or organizational policy compatibility.
-Validation for this change passed strict compilation and ShellCheck without
-warnings, 10 configuration tests (including 12 event/gate cases), 15 tests of
-the compiled reporting guard, and offline safeoutputs MCP initialization and
-noop calls. Regenerating the lock produced identical bytes. These fixture checks
-validate configuration and output restrictions, not semantic root-cause matching.
+Validation in a temporary repository containing only this workflow passed strict
+compilation and ShellCheck without warnings, 10 configuration tests (including
+12 locally interpreted synthetic event/gate cases), 15 tests of the compiled
+reporting guard with mocked GitHub reads, and offline safeoutputs MCP
+initialization and noop calls. Regenerating the lock produced identical bytes.
+These fixture checks validate configuration and output restrictions, not
+semantic root-cause matching.
 No live end-to-end failure/reporting run was performed for this change, and no
 intentional failure was introduced on `main`.
 
