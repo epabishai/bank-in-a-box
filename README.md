@@ -108,7 +108,7 @@ values with at most two fractional digits. See the full
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/health` | Application and database health |
+| `GET` | `/api/health` | Application liveness only; does not check database health |
 | `POST` | `/api/accounts` | Create an account (`name`, `email`, optional `initial_deposit`) |
 | `GET` | `/api/accounts/{id}` | Get account details and balance |
 | `GET` | `/api/accounts/{id}/transactions?page=1&limit=20` | Get paginated transaction history |
