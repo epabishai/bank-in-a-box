@@ -5,7 +5,7 @@ on:
     workflows: ["CI"]
     types: [completed]
     branches: [main]
-if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+if: ${{ github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository }}
 permissions:
   actions: read
   contents: read
